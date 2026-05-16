@@ -418,6 +418,7 @@ header .subtitle {
     <div id="quotes-header">
       <h2>Quotes</h2>
       <div class="meta">Select a topic or researcher</div>
+      <button class="tts-btn" id="tts-panel-btn" onclick="ttsReadPanel()" style="margin-top:6px">&#9654; Listen</button>
     </div>
     <div id="quotes-list">
       <div class="empty-state">
@@ -704,6 +705,15 @@ function ttsReadAll(container) {
   const cards = container.querySelectorAll('.ce-card p, .article-para');
   const text = Array.from(cards).map(el => el.textContent).join('\n\n');
   const btn = container.querySelector('.tts-btn');
+  if (speechSynthesis.speaking) { ttsStop(); return; }
+  ttsSpeak(text, btn);
+}
+function ttsReadPanel() {
+  const list = document.getElementById('quotes-list');
+  const els = list.querySelectorAll('.quote-card, .article-para, .ce-card p');
+  const text = Array.from(els).map(el => el.textContent).join('\n\n');
+  if (!text.trim()) return;
+  const btn = document.getElementById('tts-panel-btn');
   if (speechSynthesis.speaking) { ttsStop(); return; }
   ttsSpeak(text, btn);
 }
