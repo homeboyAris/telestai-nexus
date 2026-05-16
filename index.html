@@ -362,7 +362,6 @@ header .subtitle {
     <input type="text" id="search-box" placeholder="Search Leon's words..." />
   </header>
 
-  <div id="mobile-overlay" class="mobile-overlay" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('open')"></div>
   <nav id="sidebar"></nav>
 
   <main id="graph-area">
@@ -1112,5 +1111,6 @@ function setupSearch() {
 
 document.addEventListener('DOMContentLoaded', init);
 </script>
+<div id="mobile-overlay" class="mobile-overlay" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('open')"></div>
 </body>
 </html>
