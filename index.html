@@ -518,9 +518,9 @@ function buildSidebar() {
       el.classList.add('active');
       const type = el.dataset.type;
       const id = el.dataset.id;
-      if (type === 'topic') { showTopicQuotes(id); showCenterExplain(id); }
-      else if (type === 'researcher') { showResearcherQuotes(id); closeCenterExplain(); }
-      else if (type === 'article') { showArticleQuotes(parseInt(id)); closeCenterExplain(); }
+      if (type === 'topic') { showTopicQuotes(id); showCenterExplain(id); ttsAutoRead(); }
+      else if (type === 'researcher') { showResearcherQuotes(id); closeCenterExplain(); ttsAutoRead(); }
+      else if (type === 'article') { showArticleQuotes(parseInt(id)); closeCenterExplain(); ttsAutoRead(); }
       highlightGraphNode(type === 'topic' ? id : type === 'researcher' ? `r_${id.toLowerCase().replace(/ /g, '_')}` : null);
       sb.classList.remove('open');
       const ov = document.getElementById('mobile-overlay');
@@ -727,6 +727,21 @@ function ttsReadPanel() {
   const btn = document.getElementById('tts-panel-btn');
   if (!text.trim()) { btn.textContent = 'Select a topic first'; setTimeout(() => { btn.textContent = '▶ Listen'; }, 2000); return; }
   ttsSpeak(text, btn);
+}
+function ttsAutoRead() {
+  ttsStop();
+  setTimeout(() => {
+    const ce = document.getElementById('center-explain');
+    if (ce.classList.contains('open')) {
+      const cards = ce.querySelectorAll('.ce-card p');
+      const text = Array.from(cards).map(el => el.textContent).join('\n\n');
+      if (text.trim()) { ttsSpeak(text, ce.querySelector('.tts-btn')); return; }
+    }
+    const list = document.getElementById('quotes-list');
+    const els = list.querySelectorAll('.quote-card, .article-para, p');
+    const text = Array.from(els).map(el => el.textContent).join('\n\n');
+    if (text.trim()) ttsSpeak(text, document.getElementById('tts-panel-btn'));
+  }, 100);
 }
 
 function showCenterExplain(topic) {
