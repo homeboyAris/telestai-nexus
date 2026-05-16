@@ -791,8 +791,11 @@ function showResearcherFromTag(name) {
   });
 }
 
+function cleanFootnotes(str) {
+  return str.replace(/(\w)\d{1,2}(?=[\s\.\,\;\:\!\?\)]|$)/g, '$1').replace(/\[\d+\]/g, '');
+}
 function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return cleanFootnotes(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ——— Graph ———
