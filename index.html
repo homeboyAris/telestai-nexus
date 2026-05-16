@@ -386,17 +386,17 @@ function buildSidebar() {
   let html = '';
 
   // Group topics — Leon's ontology:
-  // Aether is a space, not an element. Elements = Water + Light (inversions of each other).
-  // EZ Plasma = fusion of elements. Forces = Pressure + its inversion (Suction/Gravity).
-  // Gravity = aetheric suction of water. Reality = Consciousness + Time.
+  // Aether & Reality combined (aether = the space; consciousness/time = reality within it).
+  // Elements = Water + Light (inversions of each other). EZ Plasma = fusion.
+  // Pressure & Suction: gravity is consequence of vortex motion.
+  // Entropy & Syntropy: love/syntropy paired with its inverse.
   const topicGroups = {
     'Principles': ['inversion', 'phi', 'psi', 'monad', 'dyad', 'triad'],
-    'Aether': ['aether', 'zero_point'],
+    'Aether & Reality': ['aether', 'zero_point', 'consciousness', 'time'],
     'Elements': ['water', 'light', 'ez_plasma'],
     'Pressure & Suction': ['pressure', 'gravity', 'vortex'],
-    'Form': ['fractality', 'beauty'],
-    'Reality': ['consciousness', 'time'],
-    'Love & Syntropy': ['love'],
+    'Entropy & Syntropy': ['love'],
+    'Structure & Feeling': ['fractality', 'beauty'],
     'Sciences': ['genetics', 'virology', 'blood'],
     'Mythology': ['mythology'],
   };
@@ -624,16 +624,15 @@ function initGraph() {
   // Scale radius by weight — place each group in its own sector
   const maxW = Math.max(...G.graph.nodes.map(n => n.weight));
   const sectorMap = {};
-  const catOrder = ['Principles','Aether','Elements','Pressure & Suction','Form','Reality','Love & Syntropy','Sciences','Mythology'];
+  const catOrder = ['Principles','Aether & Reality','Elements','Pressure & Suction','Entropy & Syntropy','Structure & Feeling','Sciences','Mythology'];
   catOrder.forEach((c, i) => { sectorMap[c] = i; });
   const catTopics = {
     'Principles': ['inversion','phi','psi','monad','dyad','triad'],
-    'Aether': ['aether','zero_point'],
+    'Aether & Reality': ['aether','zero_point','consciousness','time'],
     'Elements': ['water','light','ez_plasma'],
     'Pressure & Suction': ['pressure','gravity','vortex'],
-    'Form': ['fractality','beauty'],
-    'Reality': ['consciousness','time'],
-    'Love & Syntropy': ['love'],
+    'Entropy & Syntropy': ['love'],
+    'Structure & Feeling': ['fractality','beauty'],
     'Sciences': ['genetics','virology','blood'],
     'Mythology': ['mythology'],
   };
@@ -1021,17 +1020,81 @@ function setupSearch() {
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       const query = input.value.trim().toLowerCase();
-      if (query.length < 2) return;
+      if (query.length < 2) {
+        if (query.length === 0 && activeFilter && activeFilter.type === 'search') {
+          activeFilter = null;
+          document.querySelector('#quotes-header h2').textContent = 'Quotes';
+          document.querySelector('#quotes-header .meta').textContent = 'Select a topic or researcher';
+          document.getElementById('quotes-list').innerHTML = '<div class="empty-state"><p style="color:var(--gold);font-weight:600">Leon\'s words, structured</p><p>Click a topic in the sidebar or a node in the graph to see quotes.</p></div>';
+          highlightGraphNode(null);
+        }
+        return;
+      }
       const matches = G.quotes.filter(q => q.text.toLowerCase().includes(query));
-      renderQuotes(
-        `Search: "${input.value.trim()}"`,
-        `${matches.length} quotes found`,
-        matches.slice(0, 80)
-      );
+
+      // Count which topics the results touch
+      const topicHits = {};
+      for (const q of matches) {
+        for (const t of (q.topics || [])) {
+          topicHits[t] = (topicHits[t] || 0) + 1;
+        }
+      }
+      const topTopics = Object.entries(topicHits).sort((a,b) => b[1] - a[1]).slice(0, 6);
+      const topicSummary = topTopics.map(([t, c]) => {
+        const label = t.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+        return `<span class="quote-tag" onclick="event.stopPropagation(); showTopicFromTag('${t}')" style="cursor:pointer">${label} (${c})</span>`;
+      }).join(' ');
+
+      const articleHits = {};
+      for (const q of matches) {
+        articleHits[q.article_id] = (articleHits[q.article_id] || 0) + 1;
+      }
+      const articleCount = Object.keys(articleHits).length;
+
+      document.querySelector('#quotes-header h2').textContent = `Search: "${input.value.trim()}"`;
+      document.querySelector('#quotes-header .meta').innerHTML = `${matches.length} quotes across ${articleCount} articles`;
+      const list = document.getElementById('quotes-list');
+      let html = '';
+      if (topicSummary) {
+        html += `<div style="padding:8px 12px;margin-bottom:12px;background:rgba(212,168,83,0.06);border:1px solid var(--border);border-radius:6px"><span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Topics found: </span>${topicSummary}</div>`;
+      }
+
+      const seen = new Map();
+      const deduped = [];
+      for (const q of matches) {
+        const key = q.text.slice(0, 100);
+        if (!seen.has(key)) { seen.set(key, q); deduped.push(q); }
+      }
+      for (const q of deduped.slice(0, 80)) {
+        const article = G.articles.find(a => a.id === q.article_id);
+        const url = article ? article.url : '';
+        const artTitle = article ? article.title : '';
+        const shortTitle = artTitle.length > 50 ? artTitle.slice(0, 50) + '...' : artTitle;
+        const topicTags = (q.topics || []).map(t => {
+          const tl = t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          return `<span class="quote-tag" onclick="event.stopPropagation(); showTopicFromTag('${t}')">${tl}</span>`;
+        }).join('');
+        const resTags = (q.researchers || []).map(r =>
+          `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r}')">${r}</span>`
+        ).join('');
+        let text = q.text;
+        if (text.length > 600) text = text.slice(0, 600) + '...';
+        let displayText = escapeHtml(text);
+        const term = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        displayText = displayText.replace(new RegExp('(' + term + ')', 'gi'), '<mark>$1</mark>');
+        html += `<div class="quote-card">${displayText}<a class="source" href="${url}" target="_blank" rel="noopener">${escapeHtml(shortTitle)}</a><div class="quote-tags">${topicTags}${resTags}</div></div>`;
+      }
+      list.innerHTML = html;
       activeFilter = { type: 'search', id: query };
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-      highlightGraphNode(null);
+
+      // Highlight most relevant topic in graph
+      if (topTopics.length) highlightGraphNode(topTopics[0][0]);
+      else highlightGraphNode(null);
     }, 250);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { input.value = ''; input.dispatchEvent(new Event('input')); }
   });
 }
 
