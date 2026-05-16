@@ -385,14 +385,20 @@ function buildSidebar() {
   const sb = document.getElementById('sidebar');
   let html = '';
 
-  // Group topics into categories
+  // Group topics — Leon's ontology:
+  // Aether is a space, not an element. Elements = Water + Light (inversions of each other).
+  // EZ Plasma = fusion of elements. Forces = Pressure + its inversion (Suction/Gravity).
+  // Gravity = aetheric suction of water. Reality = Consciousness + Time.
   const topicGroups = {
-    'Basic Principles': ['inversion', 'phi', 'psi', 'zero_point', 'monad', 'dyad', 'triad'],
-    'Elements': ['water', 'light', 'aether', 'ez_plasma'],
-    'Forces': ['pressure', 'gravity', 'vortex', 'fractality'],
-    'Qualities': ['beauty', 'love', 'consciousness', 'time'],
+    'Principles': ['inversion', 'phi', 'psi', 'monad', 'dyad', 'triad'],
+    'Aether': ['aether', 'zero_point'],
+    'Elements': ['water', 'light', 'ez_plasma'],
+    'Pressure & Suction': ['pressure', 'gravity', 'vortex'],
+    'Form': ['fractality', 'beauty'],
+    'Reality': ['consciousness', 'time'],
+    'Love & Syntropy': ['love'],
     'Sciences': ['genetics', 'virology', 'blood'],
-    'Perspectives': ['mythology'],
+    'Mythology': ['mythology'],
   };
 
   for (const [group, topics] of Object.entries(topicGroups)) {
@@ -615,18 +621,34 @@ function initGraph() {
   }
   sizeCanvas();
 
-  // Scale radius by weight — bigger spread
+  // Scale radius by weight — place each group in its own sector
   const maxW = Math.max(...G.graph.nodes.map(n => n.weight));
-  // Separate topics and researchers for initial placement
-  const topics = G.graph.nodes.filter(n => n.type === 'topic');
-  const researchers = G.graph.nodes.filter(n => n.type === 'researcher');
-  const allOrdered = [...topics, ...researchers];
-  const nodes = allOrdered.map((n, i) => {
+  const sectorMap = {};
+  const catOrder = ['Principles','Aether','Elements','Pressure & Suction','Form','Reality','Love & Syntropy','Sciences','Mythology'];
+  catOrder.forEach((c, i) => { sectorMap[c] = i; });
+  const catTopics = {
+    'Principles': ['inversion','phi','psi','monad','dyad','triad'],
+    'Aether': ['aether','zero_point'],
+    'Elements': ['water','light','ez_plasma'],
+    'Pressure & Suction': ['pressure','gravity','vortex'],
+    'Form': ['fractality','beauty'],
+    'Reality': ['consciousness','time'],
+    'Love & Syntropy': ['love'],
+    'Sciences': ['genetics','virology','blood'],
+    'Mythology': ['mythology'],
+  };
+  function topicSector(id) {
+    for (const [cat, ids] of Object.entries(catTopics)) {
+      if (ids.includes(id)) return sectorMap[cat] || 0;
+    }
+    return catOrder.length;
+  }
+  const totalSectors = catOrder.length + 1;
+  const nodes = G.graph.nodes.map((n) => {
     const isR = n.type === 'researcher';
-    const group = isR ? researchers : topics;
-    const gi = isR ? i - topics.length : i;
-    const angle = (gi / group.length) * Math.PI * 2 + (isR ? 0.3 : 0);
-    const spread = isR ? 280 + Math.random() * 120 : 200 + Math.random() * 180;
+    const sector = isR ? (totalSectors * Math.random()) : topicSector(n.id);
+    const angle = (sector / totalSectors) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const spread = Math.min(W, H) * (0.28 + Math.random() * 0.15);
     const normW = n.weight / maxW;
     return {
       ...n,
