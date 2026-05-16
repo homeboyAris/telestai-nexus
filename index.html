@@ -362,7 +362,7 @@ header .subtitle {
     </div>
     <div id="quotes-list">
       <div class="empty-state">
-        <h3>Leon's words, structured</h3>
+        <h3>Karmameleon's mindmap</h3>
         <p>Click a topic in the sidebar or a node in the graph to see quotes.</p>
       </div>
     </div>
@@ -623,49 +623,84 @@ function initGraph() {
 
   // Scale radius by weight — place each group in its own sector
   const maxW = Math.max(...G.graph.nodes.map(n => n.weight));
-  const sectorMap = {};
-  const catOrder = ['Principles','Aether & Reality','Elements','Pressure & Suction','Entropy & Syntropy','Structure & Feeling','Sciences','Mythology'];
-  catOrder.forEach((c, i) => { sectorMap[c] = i; });
-  const catTopics = {
-    'Principles': ['inversion','phi','psi','monad','dyad','triad'],
-    'Aether & Reality': ['aether','zero_point','consciousness','time'],
-    'Elements': ['water','light','ez_plasma'],
-    'Pressure & Suction': ['pressure','gravity','vortex'],
-    'Entropy & Syntropy': ['love'],
-    'Structure & Feeling': ['fractality','beauty'],
-    'Sciences': ['genetics','virology','blood'],
-    'Mythology': ['mythology'],
-  };
-  function topicSector(id) {
-    for (const [cat, ids] of Object.entries(catTopics)) {
-      if (ids.includes(id)) return sectorMap[cat] || 0;
-    }
-    return catOrder.length;
-  }
-  const totalSectors = catOrder.length + 1;
-  const nodes = G.graph.nodes.map((n) => {
-    const isR = n.type === 'researcher';
-    const sector = isR ? (totalSectors * Math.random()) : topicSector(n.id);
-    const angle = (sector / totalSectors) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-    const spread = Math.min(W, H) * (0.28 + Math.random() * 0.15);
-    const normW = n.weight / maxW;
-    return {
-      ...n,
-      x: cx + Math.cos(angle) * spread,
-      y: cy + Math.sin(angle) * spread,
-      vx: 0, vy: 0,
-      radius: 6 + normW * 22,
-      displayRadius: 6 + normW * 22,
-      targetRadius: 6 + normW * 22,
-      alpha: 0.7,
-      targetAlpha: 0.7,
-    };
-  });
+  // Deterministic radial layout — topics in inner ring by category, researchers in outer ring
+  const topicNodes = G.graph.nodes.filter(n => n.type === 'topic');
+  const resNodes = G.graph.nodes.filter(n => n.type === 'researcher');
+  const topicR = Math.min(W, H) * 0.28;
+  const resR = Math.min(W, H) * 0.42;
 
+  // Sort topics by weight descending for inner ring placement
+  topicNodes.sort((a, b) => b.weight - a.weight);
+  const nodes = [];
+  for (let i = 0; i < topicNodes.length; i++) {
+    const n = topicNodes[i];
+    const angle = (i / topicNodes.length) * Math.PI * 2 - Math.PI / 2;
+    const normW = n.weight / maxW;
+    const r = 6 + normW * 22;
+    nodes.push({
+      ...n,
+      x: cx + Math.cos(angle) * topicR,
+      y: cy + Math.sin(angle) * topicR,
+      vx: 0, vy: 0,
+      radius: r, displayRadius: r, targetRadius: r,
+      alpha: 0.7, targetAlpha: 0.7,
+    });
+  }
+
+  // Place researchers near their strongest topic connection
   const nodeMap = {};
   nodes.forEach(n => nodeMap[n.id] = n);
+  const resPlaced = [];
+  for (const rn of resNodes) {
+    const rid = `r_${rn.label.toLowerCase().replace(/ /g, '_')}`;
+    const rEdges = G.graph.edges
+      .filter(e => (e.source === rid || e.target === rid) && (nodeMap[e.source === rid ? e.target : e.source]))
+      .sort((a, b) => b.weight - a.weight);
+    let ax, ay;
+    if (rEdges.length > 0) {
+      const bestId = rEdges[0].source === rid ? rEdges[0].target : rEdges[0].source;
+      const bestNode = nodeMap[bestId];
+      const angleToCenter = Math.atan2(bestNode.y - cy, bestNode.x - cx);
+      const jitter = (resPlaced.length * 0.7) - (resNodes.length * 0.35);
+      ax = cx + Math.cos(angleToCenter + jitter * 0.15) * resR;
+      ay = cy + Math.sin(angleToCenter + jitter * 0.15) * resR;
+    } else {
+      const angle = (resPlaced.length / resNodes.length) * Math.PI * 2;
+      ax = cx + Math.cos(angle) * resR;
+      ay = cy + Math.sin(angle) * resR;
+    }
+    const normW = rn.weight / maxW;
+    const r = 6 + normW * 22;
+    const node = {
+      ...rn,
+      x: ax, y: ay,
+      vx: 0, vy: 0,
+      radius: r, displayRadius: r, targetRadius: r,
+      alpha: 0.7, targetAlpha: 0.7,
+    };
+    nodes.push(node);
+    nodeMap[node.id] = node;
+    resPlaced.push(node);
+  }
 
-  // Only use strong edges for layout — weak ones shown on hover only
+  // Collision pass — push overlapping nodes apart
+  for (let pass = 0; pass < 50; pass++) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[j].x - nodes[i].x;
+        const dy = nodes[j].y - nodes[i].y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        const minDist = nodes[i].radius + nodes[j].radius + 30;
+        if (dist < minDist) {
+          const push = (minDist - dist) * 0.3;
+          const nx = dx / dist, ny = dy / dist;
+          nodes[i].x -= nx * push; nodes[i].y -= ny * push;
+          nodes[j].x += nx * push; nodes[j].y += ny * push;
+        }
+      }
+    }
+  }
+
   const allEdges = G.graph.edges.filter(e => nodeMap[e.source] && nodeMap[e.target]).map(e => ({
     source: nodeMap[e.source],
     target: nodeMap[e.target],
@@ -675,58 +710,6 @@ function initGraph() {
 
   graphState.nodes = nodes;
   graphState.edges = edges;
-
-  // Force simulation — well-spread layout
-  function simulate() {
-    const K_SPRING = 0.0008, K_REPULSE = 30000, DAMPING = 0.76, IDEAL_LEN = 300;
-    for (let iter = 0; iter < 800; iter++) {
-      const temp = 1 - iter / 800;
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[j].x - nodes[i].x;
-          const dy = nodes[j].y - nodes[i].y;
-          const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-          const minDist = nodes[i].radius + nodes[j].radius + 80;
-          let force = K_REPULSE / (dist * dist);
-          if (dist < minDist) force += (minDist - dist) * 0.3;
-          const fx = (dx / dist) * force, fy = (dy / dist) * force;
-          nodes[i].vx -= fx; nodes[i].vy -= fy;
-          nodes[j].vx += fx; nodes[j].vy += fy;
-        }
-      }
-      for (const e of edges) {
-        const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
-        const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-        const springLen = IDEAL_LEN + (e.source.radius + e.target.radius);
-        const force = K_SPRING * (dist - springLen);
-        const fx = (dx / dist) * force, fy = (dy / dist) * force;
-        e.source.vx += fx; e.source.vy += fy;
-        e.target.vx -= fx; e.target.vy -= fy;
-      }
-      for (const n of nodes) {
-        n.vx += (cx - n.x) * 0.00015;
-        n.vy += (cy - n.y) * 0.00015;
-        n.x += n.vx * (0.3 + temp * 0.7);
-        n.y += n.vy * (0.3 + temp * 0.7);
-        n.vx *= DAMPING; n.vy *= DAMPING;
-      }
-    }
-    // Fit to canvas with padding
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const n of nodes) {
-      minX = Math.min(minX, n.x - n.radius); maxX = Math.max(maxX, n.x + n.radius);
-      minY = Math.min(minY, n.y - n.radius); maxY = Math.max(maxY, n.y + n.radius);
-    }
-    const gw = maxX - minX, gh = maxY - minY;
-    const pad = 50;
-    const scale = Math.min((W - pad * 2) / gw, (H - pad * 2) / gh);
-    const gcx = (minX + maxX) / 2, gcy = (minY + maxY) / 2;
-    for (const n of nodes) {
-      n.x = cx + (n.x - gcx) * scale;
-      n.y = cy + (n.y - gcy) * scale;
-    }
-  }
-  simulate();
 
   // Animation state
   let highlightedNode = null;
