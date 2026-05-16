@@ -495,7 +495,11 @@ function showArticleQuotes(aid) {
   }
 
   if (article.text) {
-    const paras = article.text.split(/\n\s*\n/).filter(p => p.trim().length > 30);
+    const boilerplate = /^(Read full story|Share|Subscribe|Like|Comment|\d+ Likes?|Thanks for reading|Leave a comment|Get more from|Ready for more|Start writing|Upgrade to paid|See all|All rights|Based on|Top\s|https?:\/\/)/i;
+    const paras = article.text.split(/\n\s*\n/).filter(p => {
+      const t = p.trim();
+      return t.length > 30 && !boilerplate.test(t) && !/^\d+[\.\)]?\s*$/.test(t);
+    });
     html += '<div style="border-left:2px solid var(--gold-dim);padding-left:16px;margin-bottom:20px">';
     html += '<div style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Full Article</div>';
     for (const p of paras) {
@@ -744,20 +748,27 @@ function initGraph() {
     ctx.translate(graphState.panX, graphState.panY);
     ctx.scale(graphState.zoom, graphState.zoom);
 
-    // Edges — show all on hover, strong only by default
+    // Edges — curved, organic feel. Show all on hover, strong only by default
     const drawEdges = highlightedNode ? allEdges : edges;
     for (const e of drawEdges) {
       const hl = highlightedNode && (e.source.id === highlightedNode || e.target.id === highlightedNode);
       if (highlightedNode && !hl) continue;
+      const mx = (e.source.x + e.target.x) / 2;
+      const my = (e.source.y + e.target.y) / 2;
+      const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const curve = dist * 0.15;
+      const cpx = mx + (-dy / dist) * curve;
+      const cpy = my + (dx / dist) * curve;
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
-      ctx.lineTo(e.target.x, e.target.y);
+      ctx.quadraticCurveTo(cpx, cpy, e.target.x, e.target.y);
       if (hl) {
-        ctx.strokeStyle = `rgba(212, 168, 83, ${Math.min(0.6, e.weight * 0.03)})`;
-        ctx.lineWidth = Math.min(3, 0.5 + e.weight * 0.15);
+        ctx.strokeStyle = `rgba(212, 168, 83, ${Math.min(0.5, e.weight * 0.025)})`;
+        ctx.lineWidth = Math.min(2.5, 0.5 + e.weight * 0.12);
       } else {
-        ctx.strokeStyle = 'rgba(80, 70, 120, 0.12)';
-        ctx.lineWidth = Math.min(2, 0.3 + e.weight * 0.08);
+        ctx.strokeStyle = 'rgba(80, 70, 120, 0.1)';
+        ctx.lineWidth = Math.min(1.5, 0.3 + e.weight * 0.06);
       }
       ctx.stroke();
     }
