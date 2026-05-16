@@ -48,9 +48,10 @@ body {
   #graph-area { grid-column: 1; min-height: 300px; }
   #quotes-panel { grid-column: 1; max-height: 50vh; }
   .mobile-toggle { display: flex !important; }
-  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; pointer-events: auto; }
   .mobile-overlay.open { display: block; }
 }
+.mobile-overlay { display: none; position: fixed; }
 .mobile-toggle {
   display: none; align-items: center; justify-content: center;
   width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border);
@@ -383,6 +384,7 @@ header .subtitle {
     </div>
   </aside>
 </div>
+<div id="mobile-overlay" class="mobile-overlay" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('open')"></div>
 
 <script>
 let G = null; // glossary data
@@ -1111,6 +1113,5 @@ function setupSearch() {
 
 document.addEventListener('DOMContentLoaded', init);
 </script>
-<div id="mobile-overlay" class="mobile-overlay" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('open')"></div>
 </body>
 </html>
