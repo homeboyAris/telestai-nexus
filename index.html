@@ -644,28 +644,30 @@ function initGraph() {
   const nodeMap = {};
   nodes.forEach(n => nodeMap[n.id] = n);
 
-  const edges = G.graph.edges.filter(e => nodeMap[e.source] && nodeMap[e.target]).map(e => ({
+  // Only use strong edges for layout — weak ones shown on hover only
+  const allEdges = G.graph.edges.filter(e => nodeMap[e.source] && nodeMap[e.target]).map(e => ({
     source: nodeMap[e.source],
     target: nodeMap[e.target],
     weight: e.weight,
   }));
+  const edges = allEdges.filter(e => e.weight >= 8);
 
   graphState.nodes = nodes;
   graphState.edges = edges;
 
-  // Force simulation — spread layout
+  // Force simulation — well-spread layout
   function simulate() {
-    const K_SPRING = 0.0015, K_REPULSE = 6000, DAMPING = 0.8, IDEAL_LEN = 200;
-    for (let iter = 0; iter < 600; iter++) {
-      const temp = 1 - iter / 600;
+    const K_SPRING = 0.001, K_REPULSE = 20000, DAMPING = 0.78, IDEAL_LEN = 260;
+    for (let iter = 0; iter < 800; iter++) {
+      const temp = 1 - iter / 800;
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[j].x - nodes[i].x;
           const dy = nodes[j].y - nodes[i].y;
           const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-          const minDist = nodes[i].radius + nodes[j].radius + 40;
+          const minDist = nodes[i].radius + nodes[j].radius + 60;
           let force = K_REPULSE / (dist * dist);
-          if (dist < minDist) force += (minDist - dist) * 0.15;
+          if (dist < minDist) force += (minDist - dist) * 0.3;
           const fx = (dx / dist) * force, fy = (dy / dist) * force;
           nodes[i].vx -= fx; nodes[i].vy -= fy;
           nodes[j].vx += fx; nodes[j].vy += fy;
@@ -674,17 +676,17 @@ function initGraph() {
       for (const e of edges) {
         const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
         const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-        const springLen = IDEAL_LEN + (e.source.radius + e.target.radius) * 0.5;
-        const force = K_SPRING * (dist - springLen) * (1 + Math.min(e.weight, 20) * 0.03);
+        const springLen = IDEAL_LEN + (e.source.radius + e.target.radius);
+        const force = K_SPRING * (dist - springLen);
         const fx = (dx / dist) * force, fy = (dy / dist) * force;
         e.source.vx += fx; e.source.vy += fy;
         e.target.vx -= fx; e.target.vy -= fy;
       }
       for (const n of nodes) {
-        n.vx += (cx - n.x) * 0.0003;
-        n.vy += (cy - n.y) * 0.0003;
-        n.x += n.vx * (0.4 + temp * 0.6);
-        n.y += n.vy * (0.4 + temp * 0.6);
+        n.vx += (cx - n.x) * 0.00015;
+        n.vy += (cy - n.y) * 0.00015;
+        n.x += n.vx * (0.3 + temp * 0.7);
+        n.y += n.vy * (0.3 + temp * 0.7);
         n.vx *= DAMPING; n.vy *= DAMPING;
       }
     }
@@ -695,8 +697,8 @@ function initGraph() {
       minY = Math.min(minY, n.y - n.radius); maxY = Math.max(maxY, n.y + n.radius);
     }
     const gw = maxX - minX, gh = maxY - minY;
-    const pad = 60;
-    const scale = Math.min((W - pad * 2) / gw, (H - pad * 2) / gh, 1.2);
+    const pad = 50;
+    const scale = Math.min((W - pad * 2) / gw, (H - pad * 2) / gh);
     const gcx = (minX + maxX) / 2, gcy = (minY + maxY) / 2;
     for (const n of nodes) {
       n.x = cx + (n.x - gcx) * scale;
@@ -738,18 +740,20 @@ function initGraph() {
     ctx.translate(graphState.panX, graphState.panY);
     ctx.scale(graphState.zoom, graphState.zoom);
 
-    // Edges
-    for (const e of edges) {
+    // Edges — show all on hover, strong only by default
+    const drawEdges = highlightedNode ? allEdges : edges;
+    for (const e of drawEdges) {
       const hl = highlightedNode && (e.source.id === highlightedNode || e.target.id === highlightedNode);
+      if (highlightedNode && !hl) continue;
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
       ctx.lineTo(e.target.x, e.target.y);
       if (hl) {
-        ctx.strokeStyle = `rgba(212, 168, 83, ${Math.min(0.6, e.weight * 0.04)})`;
-        ctx.lineWidth = Math.min(3, 0.5 + e.weight * 0.2);
+        ctx.strokeStyle = `rgba(212, 168, 83, ${Math.min(0.6, e.weight * 0.03)})`;
+        ctx.lineWidth = Math.min(3, 0.5 + e.weight * 0.15);
       } else {
-        ctx.strokeStyle = 'rgba(80, 70, 120, 0.08)';
-        ctx.lineWidth = Math.min(1.5, e.weight * 0.1);
+        ctx.strokeStyle = 'rgba(80, 70, 120, 0.12)';
+        ctx.lineWidth = Math.min(2, 0.3 + e.weight * 0.08);
       }
       ctx.stroke();
     }
@@ -757,7 +761,7 @@ function initGraph() {
     // Nodes
     for (const n of nodes) {
       const isHl = n.id === highlightedNode;
-      const isConn = highlightedNode && edges.some(e =>
+      const isConn = highlightedNode && allEdges.some(e =>
         (e.source.id === highlightedNode && e.target.id === n.id) ||
         (e.target.id === highlightedNode && e.source.id === n.id)
       );
@@ -818,7 +822,7 @@ function initGraph() {
     highlightedNode = nodeId;
     for (const n of nodes) {
       const isHl = n.id === nodeId;
-      const isConn = nodeId && edges.some(e =>
+      const isConn = nodeId && allEdges.some(e =>
         (e.source.id === nodeId && e.target.id === n.id) ||
         (e.target.id === nodeId && e.source.id === n.id)
       );
@@ -870,7 +874,7 @@ function initGraph() {
       tooltip.style.top = ty + 'px';
       const count = node.type === 'researcher' ? (G.researcher_counts[node.label]||0) : (G.topic_counts[node.id]||0);
       // Connected topics as subtopics
-      const connected = edges
+      const connected = allEdges
         .filter(e => e.source.id === node.id || e.target.id === node.id)
         .map(e => ({ id: e.source.id === node.id ? e.target.id : e.source.id, w: e.weight }))
         .sort((a,b) => b.w - a.w)
@@ -907,7 +911,7 @@ function initGraph() {
 
   function showSubtopicPopup(node) {
     const popup = document.getElementById('subtopic-popup');
-    const connected = edges
+    const connected = allEdges
       .filter(e => e.source.id === node.id || e.target.id === node.id)
       .map(e => ({ node: e.source.id === node.id ? e.target : e.source, w: e.weight }))
       .sort((a,b) => b.w - a.w)
