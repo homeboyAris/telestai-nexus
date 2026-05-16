@@ -289,13 +289,6 @@ header .subtitle {
 #center-explain .ce-card .ce-source {
   font-size: 10px; color: var(--text-dim); margin-top: 8px;
 }
-.tts-btn {
-  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
-  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-  transition: all 0.15s;
-}
-.tts-btn:hover { border-color: var(--gold); color: var(--gold); }
-.tts-btn.playing { border-color: var(--accent2); color: var(--accent2); }
 
 /* Quotes panel */
 #quotes-panel {
@@ -401,7 +394,7 @@ header .subtitle {
     <div class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('mobile-overlay').classList.toggle('open')">&#9776;</div>
     <h1>Telestai Nexus</h1>
     <span class="subtitle">Metanexus &mdash; Leon Karmameleon</span>
-    <button id="clear-btn" onclick="activeFilter=null;document.querySelector('#quotes-header h2').textContent='Quotes';document.querySelector('#quotes-header .meta').textContent='Select a topic or researcher';document.getElementById('quotes-list').innerHTML='<div class=\'empty-state\'><h3>Karmameleon\\'s mindmap</h3><p>Click a topic in the sidebar or a node in the graph to see quotes.</p></div>';highlightGraphNode(null);document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));document.getElementById('subtopic-popup').style.display='none';closeCenterExplain()" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:11px">Clear</button>
+    <button id="clear-btn" onclick="clearAll()" style="background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:11px">Clear</button>
     <input type="text" id="search-box" placeholder="Search Leon's words..." />
   </header>
 
@@ -681,83 +674,19 @@ function showTopicFromTag(topic) {
 
 function closeCenterExplain() {
   document.getElementById('center-explain').classList.remove('open');
-  ttsStop();
 }
 
-let ttsUtterance = null;
-let ttsVoices = [];
-speechSynthesis.addEventListener('voiceschanged', () => { ttsVoices = speechSynthesis.getVoices(); });
-ttsVoices = speechSynthesis.getVoices();
-
-function ttsStop() {
-  speechSynthesis.cancel();
-  document.querySelectorAll('.tts-btn.playing').forEach(b => { b.classList.remove('playing'); b.textContent = '▶ Listen'; });
-  ttsUtterance = null;
-}
-function ttsSpeak(text, btn) {
-  if (!text || !text.trim()) return;
-  ttsStop();
-  const chunks = text.match(/[\s\S]{1,3000}/g) || [text];
-  let idx = 0;
-  function speakNext() {
-    if (idx >= chunks.length) { ttsStop(); return; }
-    const u = new SpeechSynthesisUtterance(chunks[idx]);
-    u.rate = 0.92; u.pitch = 1.0;
-    if (!ttsVoices.length) ttsVoices = speechSynthesis.getVoices();
-    const good = ttsVoices.find(v => /samantha|karen|zira|female/i.test(v.name)) || ttsVoices.find(v => /en[-_](US|GB)/i.test(v.lang));
-    if (good) u.voice = good;
-    u.onend = () => { idx++; speakNext(); };
-    u.onerror = () => { ttsStop(); };
-    ttsUtterance = u;
-    speechSynthesis.speak(u);
-  }
-  if (btn) { btn.classList.add('playing'); btn.textContent = '■ Stop'; }
-  speakNext();
-}
-function ttsReadAll(container) {
-  const cards = container.querySelectorAll('.ce-card p, .article-para');
-  const text = Array.from(cards).map(el => el.textContent).join('\n\n');
-  const btn = container.querySelector('.tts-btn');
-  if (speechSynthesis.speaking) { ttsStop(); return; }
-  ttsSpeak(text, btn);
-}
-function ttsReadPanel() {
-  if (speechSynthesis.speaking) { ttsStop(); return; }
-  const list = document.getElementById('quotes-list');
-  const els = list.querySelectorAll('.quote-card, .article-para, p');
-  const text = Array.from(els).map(el => el.textContent).join('\n\n');
-  const btn = document.getElementById('tts-panel-btn');
-  if (!text.trim()) { btn.textContent = 'Select a topic first'; setTimeout(() => { btn.textContent = '▶ Listen'; }, 2000); return; }
-  ttsSpeak(text, btn);
+function clearAll() {
+  activeFilter = null;
+  closeCenterExplain();
+  document.querySelector('#quotes-header h2').textContent = 'Quotes';
+  document.querySelector('#quotes-header .meta').textContent = 'Select a topic or researcher';
+  document.getElementById('quotes-list').innerHTML = '<div class="empty-state"><h3>Karmameleon\'s mindmap</h3><p>Click a topic in the sidebar or a node in the graph to see quotes.</p></div>';
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+  document.getElementById('subtopic-popup').style.display = 'none';
+  try { highlightGraphNode(null); } catch(e) {}
 }
 
-let audioPlayer = null;
-const AUDIO_BASE = 'audio/';
-function audioPlay(file, btn) {
-  if (audioPlayer) { audioPlayer.pause(); audioPlayer = null; }
-  document.querySelectorAll('.tts-btn.playing').forEach(b => { b.classList.remove('playing'); b.textContent = '▶ Listen'; });
-  if (btn && btn.classList.contains('playing')) return;
-  audioPlayer = new Audio(AUDIO_BASE + file);
-  audioPlayer.onplay = () => { if (btn) { btn.classList.add('playing'); btn.textContent = '■ Stop'; } };
-  audioPlayer.onended = () => { if (btn) { btn.classList.remove('playing'); btn.textContent = '▶ Listen'; } audioPlayer = null; };
-  audioPlayer.onerror = () => { if (btn) btn.textContent = '▶ Listen'; ttsReadPanel(); };
-  audioPlayer.play();
-}
-function audioPlayTopic(topic) {
-  const btn = document.getElementById('tts-panel-btn');
-  audioPlay('topic_' + topic + '.mp3', btn);
-}
-function audioPlayArticle(aid) {
-  const btn = document.getElementById('tts-panel-btn');
-  audioPlay('article_' + aid + '.mp3', btn);
-}
-function panelListen() {
-  if (audioPlayer && !audioPlayer.paused) { audioPlayer.pause(); audioPlayer = null; document.querySelectorAll('.tts-btn.playing').forEach(b => { b.classList.remove('playing'); b.textContent = '▶ Listen'; }); return; }
-  if (!activeFilter) { document.getElementById('tts-panel-btn').textContent = 'Select a topic first'; setTimeout(() => { document.getElementById('tts-panel-btn').textContent = '▶ Listen'; }, 2000); return; }
-  if (activeFilter.type === 'topic') audioPlayTopic(activeFilter.id);
-  else if (activeFilter.type === 'article') audioPlayArticle(activeFilter.id);
-  else ttsReadPanel();
-}
 
 function showCenterExplain(topic) {
   const el = document.getElementById('center-explain');
@@ -799,7 +728,7 @@ function showResearcherFromTag(name) {
 }
 
 function cleanFootnotes(str) {
-  return str.replace(/(\w)\d{1,2}(?=[\s\.\,\;\:\!\?\)]|$)/g, '$1').replace(/\[\d+\]/g, '');
+  return str.replace(/([\wͰ-ϿЀ-ӿ])\d{1,2}(?=[\s\.\,\;\:\!\?\)]|$)/g, '$1').replace(/\[\d+\]/g, '');
 }
 function escapeHtml(str) {
   return cleanFootnotes(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
