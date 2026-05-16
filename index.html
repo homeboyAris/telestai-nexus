@@ -39,8 +39,22 @@ body {
 }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
-  #sidebar { display: none; }
+  #sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 240px; z-index: 100;
+    transform: translateX(-100%); transition: transform 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+  #sidebar.open { transform: translateX(0); }
+  #graph-area { grid-column: 1; min-height: 300px; }
   #quotes-panel { grid-column: 1; max-height: 50vh; }
+  .mobile-toggle { display: flex !important; }
+  .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+  .mobile-overlay.open { display: block; }
+}
+.mobile-toggle {
+  display: none; align-items: center; justify-content: center;
+  width: 36px; height: 36px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; color: var(--gold); font-size: 18px;
 }
 
 /* Header */
@@ -342,11 +356,13 @@ header .subtitle {
 <body>
 <div id="app">
   <header>
+    <div class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('mobile-overlay').classList.toggle('open')">&#9776;</div>
     <h1>Telestai Nexus</h1>
     <span class="subtitle">Interactive Glossary &mdash; Leon Karmameleon</span>
     <input type="text" id="search-box" placeholder="Search Leon's words..." />
   </header>
 
+  <div id="mobile-overlay" class="mobile-overlay" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('open')"></div>
   <nav id="sidebar"></nav>
 
   <main id="graph-area">
@@ -457,6 +473,9 @@ function buildSidebar() {
       else if (type === 'researcher') showResearcherQuotes(id);
       else if (type === 'article') showArticleQuotes(parseInt(id));
       highlightGraphNode(type === 'topic' ? id : type === 'researcher' ? `r_${id.toLowerCase().replace(/ /g, '_')}` : null);
+      sb.classList.remove('open');
+      const ov = document.getElementById('mobile-overlay');
+      if (ov) ov.classList.remove('open');
     });
   });
 }
@@ -521,7 +540,7 @@ function showArticleQuotes(aid) {
       return `<span class="quote-tag" onclick="event.stopPropagation(); showTopicFromTag('${t}')">${tl}</span>`;
     }).join('');
     const resTags = (q.researchers || []).map(r =>
-      `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r}')">${r}</span>`
+      `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r.replace(/'/g, "\\'")}')">${escapeHtml(r)}</span>`
     ).join('');
     let text = q.text;
     if (text.length > 600) text = text.slice(0, 600) + '...';
@@ -564,7 +583,7 @@ function renderQuotes(title, meta, quotes) {
     }).join('');
 
     const resTags = (q.researchers || []).map(r =>
-      `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r}')">${r}</span>`
+      `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r.replace(/'/g, "\\'")}')">${escapeHtml(r)}</span>`
     ).join('');
 
     let text = q.text;
@@ -602,7 +621,7 @@ function showResearcherFromTag(name) {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ——— Graph ———
@@ -1068,7 +1087,7 @@ function setupSearch() {
           return `<span class="quote-tag" onclick="event.stopPropagation(); showTopicFromTag('${t}')">${tl}</span>`;
         }).join('');
         const resTags = (q.researchers || []).map(r =>
-          `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r}')">${r}</span>`
+          `<span class="quote-tag researcher" onclick="event.stopPropagation(); showResearcherFromTag('${r.replace(/'/g, "\\'")}')">${escapeHtml(r)}</span>`
         ).join('');
         let text = q.text;
         if (text.length > 600) text = text.slice(0, 600) + '...';
