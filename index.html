@@ -418,7 +418,7 @@ header .subtitle {
     <div id="quotes-header">
       <h2>Quotes</h2>
       <div class="meta">Select a topic or researcher</div>
-      <button class="tts-btn" id="tts-panel-btn" onclick="ttsReadPanel()" style="margin-top:6px">&#9654; Listen</button>
+      <button class="tts-btn" id="tts-panel-btn" onclick="panelListen()" style="margin-top:6px">&#9654; Listen</button>
     </div>
     <div id="quotes-list">
       <div class="empty-state">
@@ -518,9 +518,9 @@ function buildSidebar() {
       el.classList.add('active');
       const type = el.dataset.type;
       const id = el.dataset.id;
-      if (type === 'topic') { showTopicQuotes(id); showCenterExplain(id); ttsAutoRead(); }
-      else if (type === 'researcher') { showResearcherQuotes(id); closeCenterExplain(); ttsAutoRead(); }
-      else if (type === 'article') { showArticleQuotes(parseInt(id)); closeCenterExplain(); ttsAutoRead(); }
+      if (type === 'topic') { showTopicQuotes(id); showCenterExplain(id); }
+      else if (type === 'researcher') { showResearcherQuotes(id); closeCenterExplain(); }
+      else if (type === 'article') { showArticleQuotes(parseInt(id)); closeCenterExplain(); }
       highlightGraphNode(type === 'topic' ? id : type === 'researcher' ? `r_${id.toLowerCase().replace(/ /g, '_')}` : null);
       sb.classList.remove('open');
       const ov = document.getElementById('mobile-overlay');
@@ -728,20 +728,33 @@ function ttsReadPanel() {
   if (!text.trim()) { btn.textContent = 'Select a topic first'; setTimeout(() => { btn.textContent = '▶ Listen'; }, 2000); return; }
   ttsSpeak(text, btn);
 }
-function ttsAutoRead() {
-  ttsStop();
-  setTimeout(() => {
-    const ce = document.getElementById('center-explain');
-    if (ce.classList.contains('open')) {
-      const cards = ce.querySelectorAll('.ce-card p');
-      const text = Array.from(cards).map(el => el.textContent).join('\n\n');
-      if (text.trim()) { ttsSpeak(text, ce.querySelector('.tts-btn')); return; }
-    }
-    const list = document.getElementById('quotes-list');
-    const els = list.querySelectorAll('.quote-card, .article-para, p');
-    const text = Array.from(els).map(el => el.textContent).join('\n\n');
-    if (text.trim()) ttsSpeak(text, document.getElementById('tts-panel-btn'));
-  }, 100);
+
+let audioPlayer = null;
+const AUDIO_BASE = 'audio/';
+function audioPlay(file, btn) {
+  if (audioPlayer) { audioPlayer.pause(); audioPlayer = null; }
+  document.querySelectorAll('.tts-btn.playing').forEach(b => { b.classList.remove('playing'); b.textContent = '▶ Listen'; });
+  if (btn && btn.classList.contains('playing')) return;
+  audioPlayer = new Audio(AUDIO_BASE + file);
+  audioPlayer.onplay = () => { if (btn) { btn.classList.add('playing'); btn.textContent = '■ Stop'; } };
+  audioPlayer.onended = () => { if (btn) { btn.classList.remove('playing'); btn.textContent = '▶ Listen'; } audioPlayer = null; };
+  audioPlayer.onerror = () => { if (btn) btn.textContent = '▶ Listen'; ttsReadPanel(); };
+  audioPlayer.play();
+}
+function audioPlayTopic(topic) {
+  const btn = document.getElementById('tts-panel-btn');
+  audioPlay('topic_' + topic + '.mp3', btn);
+}
+function audioPlayArticle(aid) {
+  const btn = document.getElementById('tts-panel-btn');
+  audioPlay('article_' + aid + '.mp3', btn);
+}
+function panelListen() {
+  if (audioPlayer && !audioPlayer.paused) { audioPlayer.pause(); audioPlayer = null; document.querySelectorAll('.tts-btn.playing').forEach(b => { b.classList.remove('playing'); b.textContent = '▶ Listen'; }); return; }
+  if (!activeFilter) { document.getElementById('tts-panel-btn').textContent = 'Select a topic first'; setTimeout(() => { document.getElementById('tts-panel-btn').textContent = '▶ Listen'; }, 2000); return; }
+  if (activeFilter.type === 'topic') audioPlayTopic(activeFilter.id);
+  else if (activeFilter.type === 'article') audioPlayArticle(activeFilter.id);
+  else ttsReadPanel();
 }
 
 function showCenterExplain(topic) {
@@ -757,7 +770,7 @@ function showCenterExplain(topic) {
   const best = scored.slice(0, 5);
 
   let html = `<div class="ce-header"><span class="ce-title">${escapeHtml(label)}</span>`;
-  html += `<button class="tts-btn" onclick="ttsReadAll(document.getElementById('center-explain'))">&#9654; Listen</button>`;
+  html += `<button class="tts-btn" onclick="audioPlayTopic('${topic}')">&#9654; Listen</button>`;
   html += `<button class="ce-close" onclick="closeCenterExplain()">&#10005; Back to Graph</button></div>`;
   for (const { q } of best) {
     const article = G.articles.find(a => a.id === q.article_id);
