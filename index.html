@@ -97,6 +97,22 @@ header .subtitle {
   letter-spacing: 1.5px;
   color: var(--text-dim);
   margin-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-section h3::before {
+  content: '▾';
+  font-size: 8px;
+  transition: transform 0.2s;
+}
+.nav-section.collapsed h3::before {
+  transform: rotate(-90deg);
+}
+.nav-section.collapsed .nav-items {
+  display: none;
 }
 .nav-item {
   display: flex;
@@ -152,14 +168,35 @@ header .subtitle {
   position: absolute;
   display: none;
   background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: 6px;
+  border: 1px solid var(--gold-dim);
+  border-left: 3px solid var(--gold);
+  padding: 10px 14px;
+  border-radius: 2px 8px 8px 2px;
   font-size: 12px;
   color: var(--text);
   pointer-events: none;
   z-index: 10;
-  max-width: 200px;
+  max-width: 340px;
+  line-height: 1.5;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#graph-tooltip .tt-title {
+  font-weight: 600;
+  color: var(--gold);
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+#graph-tooltip .tt-quote {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+#graph-tooltip .tt-count {
+  font-size: 10px;
+  color: var(--text-dim);
 }
 
 /* Quotes panel */
@@ -305,27 +342,43 @@ function buildSidebar() {
   const sb = document.getElementById('sidebar');
   let html = '';
 
-  // Topics by frequency
-  const topicsSorted = Object.entries(G.topic_counts).sort((a,b) => b[1] - a[1]);
-  html += '<div class="nav-section"><h3>Topics</h3></div>';
-  for (const [topic, count] of topicsSorted) {
-    const label = topic.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    html += `<div class="nav-item" data-type="topic" data-id="${topic}">
-      <span class="dot dot-topic"></span>${label}<span class="count">${count}</span>
-    </div>`;
+  // Group topics into categories
+  const topicGroups = {
+    'Basic Principles': ['inversion', 'phi', 'psi', 'zero_point', 'monad', 'dyad', 'triad'],
+    'Elements': ['water', 'light', 'aether', 'ez_plasma'],
+    'Forces': ['pressure', 'gravity', 'vortex', 'fractality'],
+    'Qualities': ['beauty', 'love', 'consciousness', 'time'],
+    'Sciences': ['genetics', 'virology', 'blood'],
+    'Perspectives': ['mythology'],
+  };
+
+  for (const [group, topics] of Object.entries(topicGroups)) {
+    const groupTopics = topics.filter(t => G.topic_counts[t]);
+    if (groupTopics.length === 0) continue;
+    const groupTotal = groupTopics.reduce((s, t) => s + (G.topic_counts[t] || 0), 0);
+    html += `<div class="nav-section" data-group="${group}"><h3>${group} <span style="margin-left:auto;font-size:9px;opacity:0.5">${groupTotal}</span></h3><div class="nav-items">`;
+    for (const topic of groupTopics) {
+      const count = G.topic_counts[topic] || 0;
+      const label = topic.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      html += `<div class="nav-item" data-type="topic" data-id="${topic}">
+        <span class="dot dot-topic"></span>${label}<span class="count">${count}</span>
+      </div>`;
+    }
+    html += '</div></div>';
   }
 
   // Researchers
   const resSorted = Object.entries(G.researcher_counts).sort((a,b) => b[1] - a[1]);
-  html += '<div class="nav-section"><h3>Researchers</h3></div>';
+  html += '<div class="nav-section"><h3>Researchers</h3><div class="nav-items">';
   for (const [name, count] of resSorted) {
     html += `<div class="nav-item" data-type="researcher" data-id="${name}">
       <span class="dot dot-researcher"></span>${name}<span class="count">${count}</span>
     </div>`;
   }
+  html += '</div></div>';
 
   // Articles
-  html += '<div class="nav-section"><h3>Articles</h3></div>';
+  html += '<div class="nav-section"><h3>Articles</h3><div class="nav-items">';
   for (const a of G.articles) {
     const short = a.title.length > 35 ? a.title.slice(0, 35) + '...' : a.title;
     const qcount = G.quotes.filter(q => q.article_id === a.id).length;
@@ -333,8 +386,17 @@ function buildSidebar() {
       <span class="dot dot-article"></span>${short}<span class="count">${qcount}</span>
     </div>`;
   }
+  html += '</div></div>';
 
   sb.innerHTML = html;
+
+  // Collapsible sections
+  sb.querySelectorAll('.nav-section h3').forEach(h3 => {
+    h3.addEventListener('click', (e) => {
+      e.stopPropagation();
+      h3.parentElement.classList.toggle('collapsed');
+    });
+  });
 
   sb.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => {
@@ -630,7 +692,19 @@ function initGraph() {
       const count = node.type === 'researcher'
         ? (G.researcher_counts[node.label] || 0)
         : (G.topic_counts[node.id] || 0);
-      tooltip.textContent = `${node.label} (${count} quotes)`;
+      // Pop quote: grab a short representative quote
+      let popQuote = '';
+      const qids = node.type === 'researcher'
+        ? (G.researcher_quotes[node.label] || [])
+        : (G.topic_quotes[node.id] || []);
+      if (qids.length > 0) {
+        const candidates = qids.slice(0, 20).map(id => G.quotes[id]).filter(q => q && q.text.length > 60 && q.text.length < 300);
+        if (candidates.length > 0) {
+          const pick = candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
+          popQuote = pick.text.slice(0, 200) + (pick.text.length > 200 ? '...' : '');
+        }
+      }
+      tooltip.innerHTML = `<div class="tt-title">${node.label}</div><div class="tt-count">${count} quotes</div>${popQuote ? `<div class="tt-quote">"${escapeHtml(popQuote)}"</div>` : ''}`;
       if (graphState.hoverNode !== node.id) {
         graphState.hoverNode = node.id;
         highlightAndDraw(node.id);
