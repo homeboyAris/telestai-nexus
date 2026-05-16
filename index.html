@@ -289,6 +289,13 @@ header .subtitle {
 #center-explain .ce-card .ce-source {
   font-size: 10px; color: var(--text-dim); margin-top: 8px;
 }
+.tts-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  transition: all 0.15s;
+}
+.tts-btn:hover { border-color: var(--gold); color: var(--gold); }
+.tts-btn.playing { border-color: var(--accent2); color: var(--accent2); }
 
 /* Quotes panel */
 #quotes-panel {
@@ -568,13 +575,13 @@ function showArticleQuotes(aid) {
     const imgInterval = imgs.length > 0 ? Math.max(2, Math.floor(paras.length / imgs.length)) : 999;
     let imgIdx = 0;
     html += '<div style="border-left:2px solid var(--gold-dim);padding-left:16px;margin-bottom:20px">';
-    html += '<div style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Full Article</div>';
+    html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><span style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:1px">Full Article</span><button class="tts-btn" onclick="ttsReadAll(this.closest('#quotes-list'))">&#9654; Listen</button></div>`;
     for (let i = 0; i < paras.length; i++) {
       if (imgIdx < imgs.length && i > 0 && i % imgInterval === 0) {
         html += `<div style="margin:16px 0;text-align:center"><img src="${imgs[imgIdx]}" loading="lazy" style="max-width:100%;border-radius:6px;opacity:0.95" onerror="this.style.display='none'"></div>`;
         imgIdx++;
       }
-      html += `<p style="color:var(--text);font-size:13px;line-height:1.75;margin:0 0 12px 0">${escapeHtml(paras[i].trim())}</p>`;
+      html += `<p class="article-para" style="color:var(--text);font-size:13px;line-height:1.75;margin:0 0 12px 0">${escapeHtml(paras[i].trim())}</p>`;
     }
     while (imgIdx < imgs.length) {
       html += `<div style="margin:16px 0;text-align:center"><img src="${imgs[imgIdx]}" loading="lazy" style="max-width:100%;border-radius:6px;opacity:0.95" onerror="this.style.display='none'"></div>`;
@@ -671,6 +678,34 @@ function showTopicFromTag(topic) {
 
 function closeCenterExplain() {
   document.getElementById('center-explain').classList.remove('open');
+  ttsStop();
+}
+
+let ttsUtterance = null;
+function ttsStop() {
+  if (speechSynthesis.speaking) speechSynthesis.cancel();
+  document.querySelectorAll('.tts-btn.playing').forEach(b => b.classList.remove('playing'));
+  ttsUtterance = null;
+}
+function ttsSpeak(text, btn) {
+  ttsStop();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.9;
+  u.pitch = 1.0;
+  const voices = speechSynthesis.getVoices();
+  const good = voices.find(v => /english.*female|samantha|karen|zira/i.test(v.name)) || voices.find(v => /en[-_]/i.test(v.lang));
+  if (good) u.voice = good;
+  u.onend = () => { if (btn) btn.classList.remove('playing'); ttsUtterance = null; };
+  if (btn) btn.classList.add('playing');
+  ttsUtterance = u;
+  speechSynthesis.speak(u);
+}
+function ttsReadAll(container) {
+  const cards = container.querySelectorAll('.ce-card p, .article-para');
+  const text = Array.from(cards).map(el => el.textContent).join('\n\n');
+  const btn = container.querySelector('.tts-btn');
+  if (speechSynthesis.speaking) { ttsStop(); return; }
+  ttsSpeak(text, btn);
 }
 
 function showCenterExplain(topic) {
@@ -678,7 +713,6 @@ function showCenterExplain(topic) {
   const label = topic.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const qids = G.topic_quotes[topic] || [];
   const quotes = qids.map(id => G.quotes[id]).filter(Boolean);
-  // Weight: longer quotes with fewer topics = more focused explanation
   const scored = quotes.map(q => ({
     q,
     score: q.text.length * (1 / Math.max(1, q.topics.length)) * (q.text.length > 200 ? 1.5 : 1)
@@ -686,11 +720,13 @@ function showCenterExplain(topic) {
   scored.sort((a, b) => b.score - a.score);
   const best = scored.slice(0, 5);
 
-  let html = `<div class="ce-header"><span class="ce-title">${escapeHtml(label)}</span><button class="ce-close" onclick="document.getElementById('center-explain').classList.remove('open')">✕ Back to Graph</button></div>`;
+  let html = `<div class="ce-header"><span class="ce-title">${escapeHtml(label)}</span>`;
+  html += `<button class="tts-btn" onclick="ttsReadAll(document.getElementById('center-explain'))">&#9654; Listen</button>`;
+  html += `<button class="ce-close" onclick="closeCenterExplain()">&#10005; Back to Graph</button></div>`;
   for (const { q } of best) {
     const article = G.articles.find(a => a.id === q.article_id);
     const src = article ? article.title : '';
-    html += `<div class="ce-card"><p>${escapeHtml(q.text)}</p><div class="ce-source">— ${escapeHtml(src)}</div></div>`;
+    html += `<div class="ce-card"><p>${escapeHtml(q.text)}</p><div class="ce-source">&mdash; ${escapeHtml(src)}</div></div>`;
   }
   el.innerHTML = html;
   el.classList.add('open');
