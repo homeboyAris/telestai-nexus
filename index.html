@@ -578,7 +578,7 @@ function showArticleQuotes(aid) {
     const imgInterval = imgs.length > 0 ? Math.max(2, Math.floor(paras.length / imgs.length)) : 999;
     let imgIdx = 0;
     html += '<div style="border-left:2px solid var(--gold-dim);padding-left:16px;margin-bottom:20px">';
-    html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><span style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:1px">Full Article</span><button class="tts-btn" onclick="ttsReadAll(this.closest('#quotes-list'))">&#9654; Listen</button></div>`;
+    html += '<div style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Full Article</div>';
     for (let i = 0; i < paras.length; i++) {
       if (imgIdx < imgs.length && i > 0 && i % imgInterval === 0) {
         html += `<div style="margin:16px 0;text-align:center"><img src="${imgs[imgIdx]}" loading="lazy" style="max-width:100%;border-radius:6px;opacity:0.95" onerror="this.style.display='none'"></div>`;
@@ -772,12 +772,19 @@ function showCenterExplain(topic) {
   const best = scored.slice(0, 5);
 
   let html = `<div class="ce-header"><span class="ce-title">${escapeHtml(label)}</span>`;
-  html += `<button class="tts-btn" onclick="audioPlayTopic('${topic}')">&#9654; Listen</button>`;
   html += `<button class="ce-close" onclick="closeCenterExplain()">&#10005; Back to Graph</button></div>`;
+  const usedImgs = new Set();
   for (const { q } of best) {
     const article = G.articles.find(a => a.id === q.article_id);
     const src = article ? article.title : '';
-    html += `<div class="ce-card"><p>${escapeHtml(q.text)}</p><div class="ce-source">&mdash; ${escapeHtml(src)}</div></div>`;
+    const imgs = (article && article.images) || [];
+    let imgHtml = '';
+    if (imgs.length > 0) {
+      const img = imgs.find(u => !usedImgs.has(u)) || imgs[0];
+      usedImgs.add(img);
+      imgHtml = `<div style="margin:10px 0;text-align:center"><img src="${img}" loading="lazy" style="max-width:100%;max-height:200px;border-radius:6px;opacity:0.9" onerror="this.style.display='none'"></div>`;
+    }
+    html += `<div class="ce-card">${imgHtml}<p>${escapeHtml(q.text)}</p><div class="ce-source">&mdash; ${escapeHtml(src)}</div></div>`;
   }
   el.innerHTML = html;
   el.classList.add('open');
