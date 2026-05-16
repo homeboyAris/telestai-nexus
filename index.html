@@ -513,26 +513,37 @@ function escapeHtml(str) {
 function initGraph() {
   const canvas = document.getElementById('graph-canvas');
   const ctx = canvas.getContext('2d');
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width * devicePixelRatio;
-  canvas.height = rect.height * devicePixelRatio;
-  canvas.style.width = rect.width + 'px';
-  canvas.style.height = rect.height + 'px';
-  ctx.scale(devicePixelRatio, devicePixelRatio);
+  let rect = canvas.parentElement.getBoundingClientRect();
+  let W, H, cx, cy;
 
-  const W = rect.width, H = rect.height;
-  const cx = W / 2, cy = H / 2;
+  function sizeCanvas() {
+    rect = canvas.parentElement.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    cx = W / 2; cy = H / 2;
+    canvas.width = W * devicePixelRatio;
+    canvas.height = H * devicePixelRatio;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  }
+  sizeCanvas();
 
-  // Layout: force-directed (simple spring model)
+  // Scale radius by weight — bigger spread
+  const maxW = Math.max(...G.graph.nodes.map(n => n.weight));
   const nodes = G.graph.nodes.map((n, i) => {
     const angle = (i / G.graph.nodes.length) * Math.PI * 2;
-    const r = 120 + Math.random() * 80;
+    const r = 150 + Math.random() * 100;
+    const normW = n.weight / maxW;
     return {
       ...n,
       x: cx + Math.cos(angle) * r,
       y: cy + Math.sin(angle) * r,
       vx: 0, vy: 0,
-      radius: Math.max(6, Math.min(24, Math.sqrt(n.weight) * 2)),
+      radius: 8 + normW * 32,
+      displayRadius: 8 + normW * 32,
+      targetRadius: 8 + normW * 32,
+      alpha: 0.7,
+      targetAlpha: 0.7,
     };
   });
 
@@ -548,42 +559,33 @@ function initGraph() {
   graphState.nodes = nodes;
   graphState.edges = edges;
 
-  // Run force simulation
-  const K_SPRING = 0.003;
-  const K_REPULSE = 800;
-  const DAMPING = 0.85;
-  const IDEAL_LEN = 100;
-
+  // Force simulation — more spacing
   function simulate() {
-    for (let iter = 0; iter < 300; iter++) {
-      // Repulsion between all nodes
+    const K_SPRING = 0.002, K_REPULSE = 2000, DAMPING = 0.82, IDEAL_LEN = 140;
+    for (let iter = 0; iter < 400; iter++) {
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[j].x - nodes[i].x;
           const dy = nodes[j].y - nodes[i].y;
           const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-          const force = K_REPULSE / (dist * dist);
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
+          const minDist = nodes[i].radius + nodes[j].radius + 20;
+          const force = K_REPULSE / (dist * dist) + (dist < minDist ? (minDist - dist) * 0.05 : 0);
+          const fx = (dx / dist) * force, fy = (dy / dist) * force;
           nodes[i].vx -= fx; nodes[i].vy -= fy;
           nodes[j].vx += fx; nodes[j].vy += fy;
         }
       }
-      // Spring attraction along edges
       for (const e of edges) {
-        const dx = e.target.x - e.source.x;
-        const dy = e.target.y - e.source.y;
+        const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y;
         const dist = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-        const force = K_SPRING * (dist - IDEAL_LEN) * (1 + e.weight * 0.1);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
+        const force = K_SPRING * (dist - IDEAL_LEN) * (1 + e.weight * 0.05);
+        const fx = (dx / dist) * force, fy = (dy / dist) * force;
         e.source.vx += fx; e.source.vy += fy;
         e.target.vx -= fx; e.target.vy -= fy;
       }
-      // Center gravity
       for (const n of nodes) {
-        n.vx += (cx - n.x) * 0.001;
-        n.vy += (cy - n.y) * 0.001;
+        n.vx += (cx - n.x) * 0.0008;
+        n.vy += (cy - n.y) * 0.0008;
         n.x += n.vx; n.y += n.vy;
         n.vx *= DAMPING; n.vy *= DAMPING;
       }
@@ -591,9 +593,32 @@ function initGraph() {
   }
   simulate();
 
-  // Draw
+  // Animation state
   let highlightedNode = null;
-  let animFrame = null;
+  let animating = false;
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function animateStep() {
+    let needsAnim = false;
+    for (const n of nodes) {
+      if (Math.abs(n.displayRadius - n.targetRadius) > 0.2) {
+        n.displayRadius = lerp(n.displayRadius, n.targetRadius, 0.12);
+        needsAnim = true;
+      }
+      if (Math.abs(n.alpha - n.targetAlpha) > 0.01) {
+        n.alpha = lerp(n.alpha, n.targetAlpha, 0.1);
+        needsAnim = true;
+      }
+    }
+    draw();
+    if (needsAnim) requestAnimationFrame(animateStep);
+    else animating = false;
+  }
+
+  function startAnim() {
+    if (!animating) { animating = true; requestAnimationFrame(animateStep); }
+  }
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
@@ -603,168 +628,194 @@ function initGraph() {
 
     // Edges
     for (const e of edges) {
-      const highlighted = highlightedNode &&
-        (e.source.id === highlightedNode || e.target.id === highlightedNode);
+      const hl = highlightedNode && (e.source.id === highlightedNode || e.target.id === highlightedNode);
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
       ctx.lineTo(e.target.x, e.target.y);
-      ctx.strokeStyle = highlighted ? 'rgba(212, 168, 83, 0.5)' : 'rgba(60, 60, 100, 0.15)';
-      ctx.lineWidth = highlighted ? Math.min(3, e.weight * 0.3) : Math.min(2, e.weight * 0.15);
+      if (hl) {
+        ctx.strokeStyle = `rgba(212, 168, 83, ${Math.min(0.6, e.weight * 0.04)})`;
+        ctx.lineWidth = Math.min(3, 0.5 + e.weight * 0.2);
+      } else {
+        ctx.strokeStyle = 'rgba(80, 70, 120, 0.08)';
+        ctx.lineWidth = Math.min(1.5, e.weight * 0.1);
+      }
       ctx.stroke();
     }
 
     // Nodes
     for (const n of nodes) {
-      const isHighlighted = n.id === highlightedNode;
-      const isConnected = highlightedNode && edges.some(e =>
+      const isHl = n.id === highlightedNode;
+      const isConn = highlightedNode && edges.some(e =>
         (e.source.id === highlightedNode && e.target.id === n.id) ||
         (e.target.id === highlightedNode && e.source.id === n.id)
       );
-      const dimmed = highlightedNode && !isHighlighted && !isConnected;
+      const dimmed = highlightedNode && !isHl && !isConn;
+      const r = n.displayRadius;
 
+      // Glow
+      if (isHl) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r + 8, 0, Math.PI * 2);
+        const glow = ctx.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, r + 12);
+        glow.addColorStop(0, n.type === 'researcher' ? 'rgba(80,200,140,0.3)' : 'rgba(220,180,60,0.3)');
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Circle
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
       if (n.type === 'researcher') {
-        ctx.fillStyle = dimmed ? 'rgba(80, 176, 128, 0.1)' : isHighlighted ? '#70e0a8' : '#308060';
+        ctx.fillStyle = dimmed ? `rgba(60,130,90,${n.alpha * 0.15})` : isHl ? `rgba(100,220,160,${n.alpha})` : `rgba(60,140,100,${n.alpha})`;
       } else {
-        ctx.fillStyle = dimmed ? 'rgba(200, 160, 64, 0.08)' : isHighlighted ? '#e8c868' : '#806830';
+        ctx.fillStyle = dimmed ? `rgba(160,130,50,${n.alpha * 0.1})` : isHl ? `rgba(230,195,80,${n.alpha})` : `rgba(140,110,40,${n.alpha * 0.75})`;
       }
       ctx.fill();
 
-      if (isHighlighted) {
-        ctx.shadowColor = var_nodeGlow(n.type);
-        ctx.shadowBlur = 20;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+      // Subtle border
+      if (!dimmed) {
+        ctx.strokeStyle = isHl
+          ? (n.type === 'researcher' ? 'rgba(100,220,160,0.6)' : 'rgba(230,195,80,0.6)')
+          : 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = isHl ? 2 : 0.5;
+        ctx.stroke();
       }
 
-      // Label
-      if (!dimmed || isHighlighted || n.radius > 12) {
-        ctx.fillStyle = dimmed ? 'rgba(120,120,160,0.3)' : isHighlighted ? '#fff' : 'rgba(220,220,240,0.8)';
-        ctx.font = `${isHighlighted ? 'bold ' : ''}${Math.max(9, n.radius * 0.7)}px Inter, sans-serif`;
+      // Label — scale with node, clear hierarchy
+      const fontSize = isHl ? Math.max(13, r * 0.55) : Math.max(8, r * 0.4);
+      if (!dimmed || r > 20) {
+        ctx.fillStyle = dimmed ? `rgba(150,140,180,${n.alpha * 0.3})` : isHl ? '#fff' : `rgba(230,225,245,${n.alpha * 0.9})`;
+        ctx.font = `${isHl ? '600 ' : '400 '}${fontSize}px Inter, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(n.label, n.x, n.y + n.radius + 12);
+        ctx.textBaseline = 'middle';
+        // Inside node if big enough, below if small
+        if (r > 18) {
+          ctx.fillText(n.label, n.x, n.y);
+        } else {
+          ctx.fillText(n.label, n.x, n.y + r + fontSize * 0.7 + 2);
+        }
       }
     }
     ctx.restore();
   }
 
-  function var_nodeGlow(type) {
-    return type === 'researcher' ? 'rgba(80, 176, 128, 0.5)' : 'rgba(200, 160, 64, 0.4)';
-  }
-
-  function highlightAndDraw(nodeId) {
+  function setHighlight(nodeId) {
     highlightedNode = nodeId;
-    draw();
+    for (const n of nodes) {
+      const isHl = n.id === nodeId;
+      const isConn = nodeId && edges.some(e =>
+        (e.source.id === nodeId && e.target.id === n.id) ||
+        (e.target.id === nodeId && e.source.id === n.id)
+      );
+      if (isHl) {
+        n.targetRadius = n.radius * 1.4;
+        n.targetAlpha = 1;
+      } else if (isConn) {
+        n.targetRadius = n.radius * 1.1;
+        n.targetAlpha = 0.85;
+      } else if (nodeId) {
+        n.targetRadius = n.radius * 0.85;
+        n.targetAlpha = 0.2;
+      } else {
+        n.targetRadius = n.radius;
+        n.targetAlpha = 0.7;
+      }
+    }
+    startAnim();
   }
-  window._highlightGraphNode = highlightAndDraw;
+  window._highlightGraphNode = setHighlight;
 
-  // Mouse interaction
+  // Mouse
   function getNodeAt(mx, my) {
     const x = (mx - graphState.panX) / graphState.zoom;
     const y = (my - graphState.panY) / graphState.zoom;
     for (const n of nodes) {
       const dx = n.x - x, dy = n.y - y;
-      if (dx*dx + dy*dy < (n.radius + 4) * (n.radius + 4)) return n;
+      if (dx*dx + dy*dy < (n.displayRadius + 6) * (n.displayRadius + 6)) return n;
     }
     return null;
   }
 
   canvas.addEventListener('mousemove', e => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-
+    const r = canvas.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
     if (graphState.dragging && !graphState.dragNode) {
-      graphState.panX += e.movementX;
-      graphState.panY += e.movementY;
-      draw();
-      return;
+      graphState.panX += e.movementX; graphState.panY += e.movementY;
+      draw(); return;
     }
-
     const node = getNodeAt(mx, my);
     const tooltip = document.getElementById('graph-tooltip');
     if (node) {
       canvas.style.cursor = 'pointer';
+      // Position tooltip smartly
+      const tx = mx + 16 + 340 > W ? mx - 350 : mx + 16;
+      const ty = my - 8;
       tooltip.style.display = 'block';
-      tooltip.style.left = (mx + 12) + 'px';
-      tooltip.style.top = (my - 8) + 'px';
-      const count = node.type === 'researcher'
-        ? (G.researcher_counts[node.label] || 0)
-        : (G.topic_counts[node.id] || 0);
-      // Pop quote: grab a short representative quote
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = ty + 'px';
+      const count = node.type === 'researcher' ? (G.researcher_counts[node.label]||0) : (G.topic_counts[node.id]||0);
+      // Connected topics as subtopics
+      const connected = edges
+        .filter(e => e.source.id === node.id || e.target.id === node.id)
+        .map(e => ({ id: e.source.id === node.id ? e.target.id : e.source.id, w: e.weight }))
+        .sort((a,b) => b.w - a.w)
+        .slice(0, 8);
+      const subtopicHtml = connected.map(c => {
+        const cn = nodeMap[c.id];
+        return cn ? `<span style="display:inline-block;margin:1px 3px;padding:1px 5px;border-radius:3px;font-size:9px;background:rgba(200,160,64,0.15);color:#c8a040">${cn.label}</span>` : '';
+      }).join('');
+      // Pop quote
       let popQuote = '';
-      const qids = node.type === 'researcher'
-        ? (G.researcher_quotes[node.label] || [])
-        : (G.topic_quotes[node.id] || []);
+      const qids = node.type === 'researcher' ? (G.researcher_quotes[node.label]||[]) : (G.topic_quotes[node.id]||[]);
       if (qids.length > 0) {
-        const candidates = qids.slice(0, 20).map(id => G.quotes[id]).filter(q => q && q.text.length > 60 && q.text.length < 300);
-        if (candidates.length > 0) {
-          const pick = candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
-          popQuote = pick.text.slice(0, 200) + (pick.text.length > 200 ? '...' : '');
-        }
+        const cands = qids.slice(0,30).map(id=>G.quotes[id]).filter(q=>q&&q.text.length>60&&q.text.length<250);
+        if (cands.length) { const p = cands[Math.floor(Math.random()*Math.min(8,cands.length))]; popQuote = p.text.slice(0,180)+(p.text.length>180?'...':''); }
       }
-      tooltip.innerHTML = `<div class="tt-title">${node.label}</div><div class="tt-count">${count} quotes</div>${popQuote ? `<div class="tt-quote">"${escapeHtml(popQuote)}"</div>` : ''}`;
+      tooltip.innerHTML = `<div class="tt-title">${node.label}</div><div class="tt-count">${count} quotes</div>${subtopicHtml ? `<div style="margin-top:4px">${subtopicHtml}</div>` : ''}${popQuote ? `<div class="tt-quote">"${escapeHtml(popQuote)}"</div>` : ''}`;
       if (graphState.hoverNode !== node.id) {
         graphState.hoverNode = node.id;
-        highlightAndDraw(node.id);
+        setHighlight(node.id);
       }
     } else {
       canvas.style.cursor = 'grab';
       tooltip.style.display = 'none';
-      if (graphState.hoverNode) {
-        graphState.hoverNode = null;
-        if (!activeFilter) highlightAndDraw(null);
-      }
+      if (graphState.hoverNode) { graphState.hoverNode = null; if (!activeFilter) setHighlight(null); }
     }
   });
 
   canvas.addEventListener('mousedown', e => {
     graphState.dragging = true;
-    const rect = canvas.getBoundingClientRect();
-    const node = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    const r = canvas.getBoundingClientRect();
+    const node = getNodeAt(e.clientX - r.left, e.clientY - r.top);
     if (node) graphState.dragNode = node;
   });
 
-  canvas.addEventListener('mouseup', e => {
+  canvas.addEventListener('mouseup', () => {
     if (graphState.dragNode) {
-      // Click on node
       const n = graphState.dragNode;
       if (n.type === 'researcher') {
         showResearcherQuotes(n.label);
-        document.querySelectorAll('.nav-item').forEach(el => {
-          el.classList.toggle('active', el.dataset.type === 'researcher' && el.dataset.id === n.label);
-        });
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.type === 'researcher' && el.dataset.id === n.label));
       } else {
         showTopicQuotes(n.id);
-        document.querySelectorAll('.nav-item').forEach(el => {
-          el.classList.toggle('active', el.dataset.type === 'topic' && el.dataset.id === n.id);
-        });
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.type === 'topic' && el.dataset.id === n.id));
       }
-      highlightAndDraw(n.id);
+      setHighlight(n.id);
     }
-    graphState.dragging = false;
-    graphState.dragNode = null;
+    graphState.dragging = false; graphState.dragNode = null;
   });
 
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    graphState.zoom = Math.max(0.3, Math.min(3, graphState.zoom * delta));
+    const f = e.deltaY > 0 ? 0.92 : 1.08;
+    graphState.zoom = Math.max(0.3, Math.min(3, graphState.zoom * f));
     draw();
   }, { passive: false });
 
-  // Resize
-  window.addEventListener('resize', () => {
-    const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width * devicePixelRatio;
-    canvas.height = rect.height * devicePixelRatio;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    ctx.scale(devicePixelRatio, devicePixelRatio);
-    draw();
-  });
-
+  window.addEventListener('resize', () => { sizeCanvas(); draw(); });
   draw();
 }
 
